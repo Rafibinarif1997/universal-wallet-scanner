@@ -63,7 +63,7 @@ Add these repository Actions variables:
 
 ## Current provider coverage
 
-The initial registry targets nine Alchemy Portfolio API networks: Ethereum, Polygon (matic-mainnet), Arbitrum, Optimism, Base, ZKsync, Linea, Scroll and Blast. The Portfolio API supports 30+ EVM networks, so the registry can be expanded after verifying per-product support. A chain is only counted as scanned when its provider calls succeed. Token prices are returned by the Portfolio API where available; unknown prices remain null.
+The scanner is configured for 30 EVM mainnets: Ethereum, Polygon, Arbitrum One, Optimism, Base, zkSync Era, Linea, Scroll, Blast, Avalanche C-Chain, BNB Smart Chain, World Chain, Unichain, Sonic, Berachain, Monad, Abstract, Ink, Soneium, Shape, ApeChain, Plume, HyperEVM, MegaETH, Mantle, Celo, Gnosis, Zora, Fraxtal and Taiko. Requests are split into small batches to stay within conservative per-request network limits. Alchemy documents Tokens By Wallet as supporting 30+ EVM chains; NFT coverage varies by network and may return partial failures. A chain is only counted as scanned when provider calls succeed. Token prices are returned by the Portfolio API where available; unknown prices remain null. Check Alchemy's live supported-network matrix before production launch because product-level support can change.
 
 ## Price and valuation policy
 
