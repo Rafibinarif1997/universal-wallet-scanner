@@ -7,7 +7,7 @@ const cors = {
 };
 const CHAINS = [
   { key: "eth-mainnet", name: "Ethereum" },
-  { key: "polygon-mainnet", name: "Polygon" },
+  { key: "matic-mainnet", name: "Polygon" },
   { key: "arb-mainnet", name: "Arbitrum" },
   { key: "opt-mainnet", name: "Optimism" },
   { key: "base-mainnet", name: "Base" },
