@@ -18,7 +18,7 @@ A read-only EVM wallet asset discovery dashboard. Users paste a public address; 
 
 - React + Vite + TypeScript
 - Supabase Edge Function as the API-key proxy
-- Alchemy NFT API and JSON-RPC
+- Alchemy Portfolio API (multi-chain Tokens By Wallet + NFTs By Wallet)
 - DeFiLlama token price endpoint where a reliable token price is available
 - GitHub Pages frontend hosting
 
@@ -63,7 +63,7 @@ Add these repository Actions variables:
 
 ## Current provider coverage
 
-The initial registry targets common Alchemy EVM networks: Ethereum, Polygon, Arbitrum, Optimism, Base, ZKsync, Linea, Scroll and Blast. Confirm current support in the Alchemy dashboard before production use. A chain is only counted as scanned when its provider calls succeed.
+The initial registry targets nine Alchemy Portfolio API networks: Ethereum, Polygon (matic-mainnet), Arbitrum, Optimism, Base, ZKsync, Linea, Scroll and Blast. The Portfolio API supports 30+ EVM networks, so the registry can be expanded after verifying per-product support. A chain is only counted as scanned when its provider calls succeed. Token prices are returned by the Portfolio API where available; unknown prices remain null.
 
 ## Price and valuation policy
 
