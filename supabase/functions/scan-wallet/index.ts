@@ -6,15 +6,15 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 const CHAINS = [
-  { key: "eth-mainnet", name: "Ethereum", rpc: "eth" },
-  { key: "polygon-mainnet", name: "Polygon", rpc: "polygon" },
-  { key: "arb-mainnet", name: "Arbitrum", rpc: "arbitrum" },
-  { key: "opt-mainnet", name: "Optimism", rpc: "optimism" },
-  { key: "base-mainnet", name: "Base", rpc: "base" },
-  { key: "zksync-mainnet", name: "ZKsync", rpc: "zksync" },
-  { key: "linea-mainnet", name: "Linea", rpc: "linea" },
-  { key: "scroll-mainnet", name: "Scroll", rpc: "scroll" },
-  { key: "blast-mainnet", name: "Blast", rpc: "blast" },
+  { key: "eth-mainnet", name: "Ethereum", priceChain: "ethereum", nativePriceId: "coingecko:ethereum" },
+  { key: "polygon-mainnet", name: "Polygon", priceChain: "polygon", nativePriceId: "coingecko:matic-network" },
+  { key: "arb-mainnet", name: "Arbitrum", priceChain: "arbitrum", nativePriceId: "coingecko:ethereum" },
+  { key: "opt-mainnet", name: "Optimism", priceChain: "optimism", nativePriceId: "coingecko:ethereum" },
+  { key: "base-mainnet", name: "Base", priceChain: "base", nativePriceId: "coingecko:ethereum" },
+  { key: "zksync-mainnet", name: "ZKsync", priceChain: "era", nativePriceId: "coingecko:ethereum" },
+  { key: "linea-mainnet", name: "Linea", priceChain: "linea", nativePriceId: "coingecko:ethereum" },
+  { key: "scroll-mainnet", name: "Scroll", priceChain: "scroll", nativePriceId: "coingecko:ethereum" },
+  { key: "blast-mainnet", name: "Blast", priceChain: "blast", nativePriceId: "coingecko:ethereum" },
 ];
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const fmt = (raw: string, decimals: number) => {
@@ -26,11 +26,11 @@ async function rpc(url: string, method: string, params: unknown[]) {
   if (!r.ok) throw new Error("RPC HTTP " + r.status);
   const j = await r.json(); if (j.error) throw new Error(j.error.message ?? "RPC error"); return j.result;
 }
-async function getPrice(chain: string, contract: string): Promise<number | undefined> {
+async function getPrice(coinId: string): Promise<number | undefined> {
   try {
-    const r = await fetch("https://coins.llama.fi/prices/current/" + encodeURIComponent(chain + ":" + contract));
+    const r = await fetch("https://coins.llama.fi/prices/current/" + encodeURIComponent(coinId));
     if (!r.ok) return undefined;
-    const j = await r.json(); const p = j.coins?.[chain + ":" + contract]?.price;
+    const j = await r.json(); const p = j.coins?.[coinId]?.price;
     return typeof p === "number" && Number.isFinite(p) ? p : undefined;
   } catch { return undefined; }
 }
@@ -44,8 +44,8 @@ async function scanChain(chain: typeof CHAINS[number], address: string, apiKey: 
     const rawNative = await rpc(rpcUrl, "eth_getBalance", [address, "latest"]);
     const native = Number(BigInt(rawNative)) / 1e18;
     if (native > 0) {
-      const nativePrice = await getPrice(chain.rpc, "0x0000000000000000000000000000000000000000");
-      assets.push({ chain: chain.key, chainName: chain.name, type: "token", name: chain.name + " native coin", symbol: chain.name === "Polygon" ? "POL" : chain.name === "Ethereum" ? "ETH" : chain.name === "Arbitrum" || chain.name === "Optimism" || chain.name === "Base" ? "ETH" : chain.name === "ZKsync" ? "ETH" : chain.name === "Linea" ? "ETH" : chain.name === "Scroll" ? "ETH" : chain.name === "Blast" ? "ETH" : chain.name, contract: "native", balance: String(native), price: nativePrice, value: nativePrice == null ? undefined : native * nativePrice, priceStatus: nativePrice == null ? "unpriced" : "priced" });
+      const nativePrice = await getPrice(chain.nativePriceId);
+      assets.push({ chain: chain.key, chainName: chain.name, type: "token", name: chain.name + " native coin", symbol: chain.name === "Polygon" ? "POL" : "ETH", contract: "native", balance: String(native), price: nativePrice, value: nativePrice == null ? undefined : native * nativePrice, priceStatus: nativePrice == null ? "unpriced" : "priced" });
     }
   } catch (e) { errors.push("Native balance: " + (e instanceof Error ? e.message : "failed")); }
   try {
@@ -57,9 +57,9 @@ async function scanChain(chain: typeof CHAINS[number], address: string, apiKey: 
         const decimals = Number(meta.decimals ?? 0);
         const balance = fmt(item.tokenBalance, decimals);
         if (Number(balance) === 0) continue;
-        const price = await getPrice(chain.rpc, item.contractAddress.toLowerCase());
+        const price = await getPrice(chain.priceChain + ":" + item.contractAddress.toLowerCase());
         assets.push({ chain: chain.key, chainName: chain.name, type: "token", name: meta.name || meta.symbol || "Unknown token", symbol: meta.symbol || undefined, contract: item.contractAddress, balance, price, value: price == null ? undefined : Number(balance) * price, priceStatus: price == null ? "unpriced" : "priced" });
-      } catch { /* Keep scanning other token contracts; provider may omit metadata for spam tokens. */ }
+      } catch { /* Continue other contracts when metadata for an unknown/spam token is unavailable. */ }
     }
     tokenCount = assets.filter(a => a.type === "token").length;
   } catch (e) { errors.push("Token balances: " + (e instanceof Error ? e.message : "failed")); }
