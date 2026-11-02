@@ -10,7 +10,7 @@ const cors = {
 // Network slugs follow Alchemy Portfolio API identifiers.
 const CHAINS = [
   { key: "eth-mainnet", name: "Ethereum" },
-  { key: "matic-mainnet", name: "Polygon" },
+  { key: "polygon-mainnet", name: "Polygon" },
   { key: "arb-mainnet", name: "Arbitrum One" },
   { key: "opt-mainnet", name: "Optimism" },
   { key: "base-mainnet", name: "Base" },
@@ -44,15 +44,16 @@ const NETWORKS = CHAINS.map(c => c.key);
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 const chunks = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
 
-const fmt = (raw: string, decimals: number) => {
+const fmt = (raw: string, decimals: number | null | undefined): string | null => {
+  if (decimals == null || !Number.isInteger(decimals) || decimals < 0 || decimals > 36) return null;
   try {
     const v = BigInt(raw);
-    const d = Math.max(0, Math.min(decimals, 36));
+    const d = decimals;
     const base = 10n ** BigInt(d);
     const whole = v / base;
     const fraction = (v % base).toString().padStart(d, "0").slice(0, 8).replace(/0+$/, "");
     return fraction ? whole.toString() + "." + fraction : whole.toString();
-  } catch { return "0"; }
+  } catch { return null; }
 };
 
 async function portfolioRequest(apiKey: string, endpoint: string, body: Record<string, unknown>) {
@@ -110,23 +111,41 @@ serve(async (req) => {
     const tokenErrors = new Map<string, string>();
     const nftErrors = new Map<string, string>();
 
-    // Keep request batches within conservative network-count limits.
+    // Use small batches normally. If a batch is rejected (for example, because
+    // one network is unsupported), retry its networks individually so one bad
+    // network cannot incorrectly mark its neighbours as failed.
     for (const batch of chunks(NETWORKS, 5)) {
       try {
         const r = await fetchPages(apiKey, "tokens/by-address", address, batch, 10);
         tokenRows.push(...r.rows);
         for (const [k, v] of r.errors) tokenErrors.set(k, v);
-      } catch (e) {
-        for (const network of batch) tokenErrors.set(network, e instanceof Error ? e.message : "Token request failed");
+      } catch {
+        for (const network of batch) {
+          try {
+            const r = await fetchPages(apiKey, "tokens/by-address", address, [network], 10);
+            tokenRows.push(...r.rows);
+            for (const [k, v] of r.errors) tokenErrors.set(k, v);
+          } catch (e) {
+            tokenErrors.set(network, e instanceof Error ? e.message : "Token request failed");
+          }
+        }
       }
     }
-    for (const batch of chunks(NETWORKS, 15)) {
+    for (const batch of chunks(NETWORKS, 5)) {
       try {
         const r = await fetchPages(apiKey, "nfts/by-address", address, batch, 10);
         nftRows.push(...r.rows);
         for (const [k, v] of r.errors) nftErrors.set(k, v);
-      } catch (e) {
-        for (const network of batch) nftErrors.set(network, e instanceof Error ? e.message : "NFT request failed");
+      } catch {
+        for (const network of batch) {
+          try {
+            const r = await fetchPages(apiKey, "nfts/by-address", address, [network], 10);
+            nftRows.push(...r.rows);
+            for (const [k, v] of r.errors) nftErrors.set(k, v);
+          } catch (e) {
+            nftErrors.set(network, e instanceof Error ? e.message : "NFT request failed");
+          }
+        }
       }
     }
 
@@ -135,16 +154,19 @@ serve(async (req) => {
       const network = t.network ?? "unknown";
       const chain = CHAINS.find(c => c.key === network);
       const meta = t.tokenMetadata ?? {};
-      const balance = fmt(t.tokenBalance ?? "0x0", Number(meta.decimals ?? 0));
-      if (Number(balance) <= 0) continue;
+      // Native assets may have null decimals in Alchemy metadata; EVM native
+      // currencies use 18 decimals. Never assume 0 decimals for ERC-20 tokens.
+      const decimals = t.tokenAddress == null ? (meta.decimals ?? 18) : meta.decimals;
+      const balance = fmt(t.tokenBalance ?? "0x0", decimals);
+      if (balance !== null && Number(balance) <= 0) continue;
       const priceRaw = t.tokenPrices?.find((p: any) => p.currency?.toLowerCase() === "usd")?.value;
       const price = priceRaw == null || !Number.isFinite(Number(priceRaw)) ? undefined : Number(priceRaw);
       assets.push({
         chain: network, chainName: chain?.name ?? network, type: "token",
         name: meta.name || meta.symbol || "Unknown token", symbol: meta.symbol || undefined,
-        contract: t.tokenAddress ?? "native", balance, price,
-        value: price == null ? undefined : Number(balance) * price,
-        image: meta.logo || undefined, priceStatus: price == null ? "unpriced" : "priced",
+        contract: t.tokenAddress ?? "native", balance: balance ?? "—", price: balance == null ? undefined : price,
+        value: balance == null || price == null ? undefined : Number(balance) * price,
+        image: meta.logo || undefined, priceStatus: balance == null || price == null ? "unpriced" : "priced",
       });
     }
 
